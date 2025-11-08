@@ -57,6 +57,9 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        attack: "hsl(var(--attack))",
+        control: "hsl(var(--control))",
+        defense: "hsl(var(--defense))",
       },
       borderRadius: {
         lg: "var(--radius)",
