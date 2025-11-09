@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { SquadReveal } from "@/components/SquadReveal";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -15,21 +16,47 @@ const Auth = () => {
   const [username, setUsername] = useState("");
   const [squadName, setSquadName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showReveal, setShowReveal] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        navigate('/collection');
+        // Check if user already has a squad
+        const { data: existingSquad } = await supabase
+          .from('squads')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        if (existingSquad) {
+          navigate('/collection');
+        } else {
+          setCurrentUserId(session.user.id);
+          setShowReveal(true);
+        }
       }
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        navigate('/collection');
+        // Check if this is a new user (no squad yet)
+        const { data: existingSquad } = await supabase
+          .from('squads')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        if (!existingSquad) {
+          setCurrentUserId(session.user.id);
+          setShowReveal(true);
+        } else {
+          navigate('/collection');
+        }
       }
     });
 
@@ -83,6 +110,15 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  if (showReveal && currentUserId) {
+    return (
+      <SquadReveal 
+        userId={currentUserId} 
+        onComplete={() => navigate('/collection')} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12">
