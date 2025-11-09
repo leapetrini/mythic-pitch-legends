@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save, FileText } from "lucide-react";
 import { FormationSelector, FormationType } from "@/components/squad/FormationSelector";
 import { SquadFieldLayout } from "@/components/squad/SquadFieldLayout";
 import { CardSelectionModal } from "@/components/squad/CardSelectionModal";
+import { SquadHeader } from "@/components/squad/SquadHeader";
 import { useToast } from "@/hooks/use-toast";
 
 const Squad = () => {
@@ -51,7 +52,7 @@ const Squad = () => {
       if (cardIds.length > 0) {
         const { data: cards } = await supabase
           .from("cards")
-          .select("id, name, position, rarity")
+          .select("id, name, position, rarity, attack, control, defense, image_url")
           .in("id", cardIds);
         
         if (cards) {
@@ -73,7 +74,7 @@ const Squad = () => {
   const handleCardSelect = async (cardId: string) => {
     const { data: card } = await supabase
       .from("cards")
-      .select("id, name, position, rarity")
+      .select("id, name, position, rarity, attack, control, defense, image_url")
       .eq("id", cardId)
       .single();
 
@@ -82,6 +83,60 @@ const Squad = () => {
       setCardDetails(prev => ({ ...prev, [cardId]: card }));
       setSelectedSlot(null);
     }
+  };
+
+  const calculateRating = () => {
+    const filledCards = Object.values(positions)
+      .filter(Boolean)
+      .map(cardId => cardDetails[cardId])
+      .filter(Boolean);
+    
+    if (filledCards.length === 0) return 0;
+    
+    const totalRating = filledCards.reduce((sum, card) => {
+      return sum + Math.round((card.attack + card.control + card.defense) / 3);
+    }, 0);
+    
+    return Math.round(totalRating / filledCards.length);
+  };
+
+  const calculateChemistry = () => {
+    const getChemistryMatch = (cardPosition: string, requiredPosition: string) => {
+      if (cardPosition === requiredPosition) return "perfect";
+      
+      const compatible: Record<string, string[]> = {
+        ST: ["ST", "CF", "LW", "RW"],
+        LW: ["LW", "ST", "LM"],
+        RW: ["RW", "ST", "RM"],
+        CAM: ["CAM", "CM", "LM", "RM"],
+        CM: ["CM", "CAM", "CDM"],
+        CDM: ["CDM", "CM", "CB"],
+        LM: ["LM", "LW", "LB"],
+        RM: ["RM", "RW", "RB"],
+        LB: ["LB", "LM", "CB"],
+        RB: ["RB", "RM", "CB"],
+        CB: ["CB", "CDM"],
+        GK: ["GK"],
+      };
+
+      if (compatible[requiredPosition]?.includes(cardPosition)) return "good";
+      return "poor";
+    };
+
+    const filledSlots = Object.entries(positions).filter(([_, cardId]) => cardId);
+    if (filledSlots.length === 0) return 0;
+
+    let totalPoints = 0;
+    filledSlots.forEach(([position, cardId]) => {
+      const card = cardDetails[cardId];
+      if (!card) return;
+      
+      const chemistry = getChemistryMatch(card.position, position);
+      if (chemistry === "perfect") totalPoints += 10;
+      else if (chemistry === "good") totalPoints += 6;
+    });
+
+    return Math.round((totalPoints / (11 * 10)) * 100);
   };
 
   const handleSave = async () => {
@@ -150,36 +205,28 @@ const Squad = () => {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Button variant="ghost" onClick={() => navigate('/collection')}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Collection
-          </Button>
-          <h1 className="text-2xl md:text-3xl glow-text">MY SQUAD</h1>
-          <div className="w-24" />
-        </div>
-      </header>
+    <div className="min-h-screen bg-background">
+      {/* Squad Header with Rating/Chemistry */}
+      <SquadHeader rating={calculateRating()} chemistry={calculateChemistry()} />
 
       <main className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-3xl md:text-4xl mb-2">Formation Builder</h2>
-              <p className="text-muted-foreground">
-                Build your tactical masterpiece
-              </p>
-            </div>
-            <div className="flex gap-4 items-center">
-              <FormationSelector value={formation} onChange={(val) => setFormation(val as FormationType)} />
-              <Button onClick={handleSave}>
+        <div className="max-w-5xl mx-auto">
+          {/* Formation Selector and Save Button */}
+          <div className="flex justify-between items-center mb-6">
+            <FormationSelector value={formation} onChange={(val) => setFormation(val as FormationType)} />
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm">
+                <FileText className="w-4 h-4 mr-2" />
+                SBC CONDITIONS
+              </Button>
+              <Button onClick={handleSave} size="sm">
                 <Save className="w-4 h-4 mr-2" />
                 Save Squad
               </Button>
             </div>
           </div>
 
+          {/* Field Layout */}
           <SquadFieldLayout
             formation={formation}
             positions={positions}
@@ -187,14 +234,16 @@ const Squad = () => {
             cardDetails={cardDetails}
           />
 
+          {/* Help Text */}
           <div className="mt-8 text-center">
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Click on position slots to assign cards. Chemistry bonus applies when card position matches slot.
             </p>
           </div>
         </div>
       </main>
 
+      {/* Card Selection Modal */}
       {selectedSlot && user && (
         <CardSelectionModal
           open={!!selectedSlot}
